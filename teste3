@@ -1,0 +1,47 @@
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import requests
+import time
+import re
+
+# 1. Autenticação no Google Sheets
+scope = ["https://spreadsheets.google.com/feeds",
+         "https://www.googleapis.com/auth/drive"]
+
+creds = ServiceAccountCredentials.from_json_keyfile_name("teste-cnpj-470315-b6a2f1e2a373.json", scope)
+client = gspread.authorize(creds)
+
+# Abra a planilha
+sheet = client.open("teste cnpj").sheet1
+
+# 2. Ler todos os CNPJs da coluna A
+cnpjs = sheet.col_values(1)
+
+# 3. Palavras-chave válidas
+situacoes_validas = ["ATIVA", "SUSPENSA", "INAPTA", "BAIXADA", "NULA", "EXTINTA", "LIQUIDACAO"]
+
+# 4. Loop para consulta e preenchimento
+for i, cnpj in enumerate(cnpjs, start=1):
+    cnpj = cnpj.strip()
+    if cnpj == "" or not cnpj.isdigit():
+        continue
+
+    print(f"Consultando {cnpj}...")
+
+    url = f"https://cnpj.biz/procura/{cnpj}"
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        text = resp.text.upper()  # transforma todo o texto em maiúscula
+
+        # Procura por qualquer palavra-chave no texto
+        situacao_encontrada = next((s for s in situacoes_validas if s in text), "Não encontrado")
+
+    except requests.exceptions.RequestException:
+        situacao_encontrada = "Erro API"
+
+    # Atualiza a coluna B na mesma linha
+    sheet.update_cell(i, 2, situacao_encontrada)
+    time.sleep(2)
+
+print("Finalizado ✅")
